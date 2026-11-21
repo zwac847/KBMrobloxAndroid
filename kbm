@@ -1,0 +1,345 @@
+-- Android KBM Full Paket (Auto Clicker + Teleport Fix + Custom Shift Lock)
+-- Menü Aç/Kapa: F6
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+-- ==========================================
+-- AYARLAR & DURUMLAR
+-- ==========================================
+local menuAcik = true
+local acEnabled = false        -- Auto Clicker aktif mi?
+local acDelay = 0.04           -- Tıklama gecikmesi (saniye)
+local rmbFixEnabled = true     -- Sağ tık ışınlanma önleyici
+local shiftLockSystem = true   -- Özel Shift Lock sistemi açık mı?
+local shiftLockActive = false  -- Şu an Shift Lock modunda mı?
+local sens = 0.004             -- Özel Shift Lock hassasiyeti
+
+local sagTikBasili = false
+local baslangicPos = Vector2.new(0, 0)
+local yaw, pitch = 0, 0
+
+-- ==========================================
+-- MODERN GUI OLUŞTURMA
+-- ==========================================
+local gui = Instance.new("ScreenGui")
+gui.Name = "AndroidKBM_Suite"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.Parent = player:WaitForChild("PlayerGui")
+
+-- Ana Pencere
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 290, 0, 275)
+mainFrame.Position = UDim2.new(0.5, -145, 0.5, -137)
+mainFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = gui
+
+local mainCorner = Instance.new("UICorner", mainFrame)
+mainCorner.CornerRadius = UDim.new(0, 10)
+
+local mainStroke = Instance.new("UIStroke", mainFrame)
+mainStroke.Color = Color3.fromRGB(55, 55, 70)
+mainStroke.Thickness = 1.5
+
+-- Başlık Çubuğu
+local topBar = Instance.new("Frame", mainFrame)
+topBar.Size = UDim2.new(1, 0, 0, 38)
+topBar.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
+topBar.BorderSizePixel = 0
+Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 10)
+
+local title = Instance.new("TextLabel", topBar)
+title.Size = UDim2.new(1, -20, 1, 0)
+title.Position = UDim2.new(0, 12, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "KBM Suite  •  [F6 Gizle]"
+title.TextColor3 = Color3.fromRGB(235, 235, 245)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 14
+title.TextXAlignment = Enum.TextXAlignment.Left
+
+-- İçerik Alanı
+local container = Instance.new("Frame", mainFrame)
+container.Size = UDim2.new(1, -20, 1, -48)
+container.Position = UDim2.new(0, 10, 0, 44)
+container.BackgroundTransparency = 1
+
+local layout = Instance.new("UIListLayout", container)
+layout.Padding = UDim.new(0, 8)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+-- Yardımcı UI Fonksiyonu: Toggle Satırı
+local function createToggle(text, defaultState, callback)
+    local row = Instance.new("Frame", container)
+    row.Size = UDim2.new(1, 0, 0, 36)
+    row.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
+    row.BorderSizePixel = 0
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 7)
+
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(1, -65, 1, 0)
+    lbl.Position = UDim2.new(0, 10, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text
+    lbl.TextColor3 = Color3.fromRGB(220, 220, 230)
+    lbl.Font = Enum.Font.GothamMedium
+    lbl.TextSize = 13
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local btn = Instance.new("TextButton", row)
+    btn.Size = UDim2.new(0, 48, 0, 24)
+    btn.Position = UDim2.new(1, -56, 0.5, -12)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 11
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+    local function updateVisual(state)
+        if state then
+            btn.Text = "AÇIK"
+            btn.BackgroundColor3 = Color3.fromRGB(45, 185, 95)
+        else
+            btn.Text = "KAPALI"
+            btn.BackgroundColor3 = Color3.fromRGB(185, 55, 65)
+        end
+    end
+
+    updateVisual(defaultState)
+    btn.MouseButton1Click:Connect(function()
+        defaultState = not defaultState
+        updateVisual(defaultState)
+        callback(defaultState)
+    end)
+
+    return updateVisual
+end
+
+-- Yardımcı UI Fonksiyonu: Değer Ayar Satırı (- / +)
+local function createStepper(text, initialDisplay, onMinus, onPlus)
+    local row = Instance.new("Frame", container)
+    row.Size = UDim2.new(1, 0, 0, 32)
+    row.BackgroundColor3 = Color3.fromRGB(24, 24, 31)
+    row.BorderSizePixel = 0
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 7)
+
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(1, -90, 1, 0)
+    lbl.Position = UDim2.new(0, 10, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = text .. ": " .. initialDisplay
+    lbl.TextColor3 = Color3.fromRGB(180, 180, 195)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local minus = Instance.new("TextButton", row)
+    minus.Size = UDim2.new(0, 26, 0, 22)
+    minus.Position = UDim2.new(1, -62, 0.5, -11)
+    minus.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+    minus.Text = "-"
+    minus.TextColor3 = Color3.fromRGB(255, 255, 255)
+    minus.Font = Enum.Font.GothamBold
+    minus.TextSize = 14
+    Instance.new("UICorner", minus).CornerRadius = UDim.new(0, 5)
+
+    local plus = Instance.new("TextButton", row)
+    plus.Size = UDim2.new(0, 26, 0, 22)
+    plus.Position = UDim2.new(1, -32, 0.5, -11)
+    plus.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+    plus.Text = "+"
+    plus.TextColor3 = Color3.fromRGB(255, 255, 255)
+    plus.Font = Enum.Font.GothamBold
+    plus.TextSize = 14
+    Instance.new("UICorner", plus).CornerRadius = UDim.new(0, 5)
+
+    minus.MouseButton1Click:Connect(function()
+        lbl.Text = text .. ": " .. onMinus()
+    end)
+    plus.MouseButton1Click:Connect(function()
+        lbl.Text = text .. ": " .. onPlus()
+    end)
+end
+
+-- Sağ Üst Mini Auto-Click Göstergesi
+local miniHud = Instance.new("TextLabel", gui)
+miniHud.Size = UDim2.new(0, 155, 0, 28)
+miniHud.Position = UDim2.new(1, -170, 0, 15)
+miniHud.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+miniHud.BackgroundTransparency = 0.2
+miniHud.TextColor3 = Color3.fromRGB(80, 255, 130)
+miniHud.Font = Enum.Font.GothamBold
+miniHud.TextSize = 12
+miniHud.Text = "Auto Click: AKTİF"
+miniHud.Visible = false
+Instance.new("UICorner", miniHud).CornerRadius = UDim.new(0, 6)
+
+-- Özel Shift Lock Nişangâhı
+local crosshair = Instance.new("Frame", gui)
+crosshair.Size = UDim2.new(0, 7, 0, 7)
+crosshair.Position = UDim2.new(0.5, 0, 0.5, 0)
+crosshair.AnchorPoint = Vector2.new(0.5, 0.5)
+crosshair.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+crosshair.Visible = false
+Instance.new("UICorner", crosshair).CornerRadius = UDim.new(1, 0)
+local chStroke = Instance.new("UIStroke", crosshair)
+chStroke.Color = Color3.fromRGB(0, 0, 0)
+chStroke.Thickness = 1.5
+
+-- ==========================================
+-- GUI BUTONLARINI BAĞLA
+-- ==========================================
+local updateAcVisual = createToggle("Auto Clicker [R / Yan Tuş]", acEnabled, function(state)
+    acEnabled = state
+    miniHud.Visible = state
+end)
+
+createStepper("Tıklama Gecikmesi", string.format("%.3fs", acDelay), function()
+    acDelay = math.clamp(acDelay - 0.005, 0.015, 0.25)
+    return string.format("%.3fs", acDelay)
+end, function()
+    acDelay = math.clamp(acDelay + 0.005, 0.015, 0.25)
+    return string.format("%.3fs", acDelay)
+end)
+
+createToggle("Sağ Tık Işınlanma Önle", rmbFixEnabled, function(state)
+    rmbFixEnabled = state
+end)
+
+createToggle("Özel Shift Lock [L-Shift]", shiftLockSystem, function(state)
+    shiftLockSystem = state
+    if not state and shiftLockActive then
+        shiftLockActive = false
+        crosshair.Visible = false
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        UserInputService.MouseIconEnabled = true
+        camera.CameraType = Enum.CameraType.Custom
+        local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        if hum then hum.AutoRotate = true end
+    end
+end)
+
+createStepper("Shift Lock Hassasiyet", string.format("%.4f", sens), function()
+    sens = math.clamp(sens - 0.0005, 0.001, 0.015)
+    return string.format("%.4f", sens)
+end, function()
+    sens = math.clamp(sens + 0.0005, 0.001, 0.015)
+    return string.format("%.4f", sens)
+end)
+
+-- ==========================================
+-- TUŞ DİNLEYİCİLERİ (F6, R/Yan Tuş, Shift, Sağ Tık)
+-- ==========================================
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    -- F6 ile GUI Gizle / Göster
+    if input.KeyCode == Enum.KeyCode.F6 then
+        menuAcik = not menuAcik
+        mainFrame.Visible = menuAcik
+        return
+    end
+
+    if gameProcessed then return end
+
+    -- Auto Clicker Tetikleyici (R veya Farenin Yan Tuşu)
+    if input.UserInputType == Enum.UserInputType.MouseButton4
+    or input.UserInputType == Enum.UserInputType.MouseButton5
+    or input.KeyCode == Enum.KeyCode.R then
+        acEnabled = not acEnabled
+        updateAcVisual(acEnabled)
+        miniHud.Visible = acEnabled
+    end
+
+    -- Özel Shift Lock Aç/Kapa (LeftShift)
+    if shiftLockSystem and input.KeyCode == Enum.KeyCode.LeftShift then
+        shiftLockActive = not shiftLockActive
+        crosshair.Visible = shiftLockActive
+        if shiftLockActive then
+            local _, y, _ = camera.CFrame:ToEulerAnglesYXZ()
+            yaw, pitch = y, 0
+            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+            UserInputService.MouseIconEnabled = false
+        else
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+            UserInputService.MouseIconEnabled = true
+            camera.CameraType = Enum.CameraType.Custom
+            local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+            if hum then hum.AutoRotate = true end
+        end
+    end
+
+    -- Sağ Tık Işınlanma Önleyici Başlangıç
+    if rmbFixEnabled and not shiftLockActive and input.UserInputType == Enum.UserInputType.MouseButton2 then
+        sagTikBasili = true
+        baslangicPos = UserInputService:GetMouseLocation()
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    -- Sağ Tık Bırakıldığında İmleci Eski Konuma Geri Çek
+    if rmbFixEnabled and sagTikBasili and input.UserInputType == Enum.UserInputType.MouseButton2 then
+        sagTikBasili = false
+        if not shiftLockActive then
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+            VirtualInputManager:SendMouseMoveEvent(baslangicPos.X, baslangicPos.Y, game)
+        end
+    end
+end)
+
+-- Shift Lock Fare Hareketi (Delta)
+UserInputService.InputChanged:Connect(function(input)
+    if shiftLockActive and input.UserInputType == Enum.UserInputType.MouseMovement then
+        yaw = yaw - (input.Delta.X * sens)
+        pitch = math.clamp(pitch - (input.Delta.Y * sens), math.rad(-75), math.rad(75))
+    end
+end)
+
+-- ==========================================
+-- ANA DÖNGÜLER (Kamera & Auto Clicker)
+-- ==========================================
+RunService.RenderStepped:Connect(function()
+    if shiftLockActive then
+        local char = player.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if root and hum then
+            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+            hum.AutoRotate = false
+            root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, yaw, 0)
+            
+            camera.CameraType = Enum.CameraType.Scriptable
+            local rot = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
+            local offset = root.Position + Vector3.new(0, 1.5, 0) + (rot * Vector3.new(1.75, 0.5, 0))
+            local dist = math.clamp((camera.CFrame.Position - root.Position).Magnitude, 6, 14)
+            camera.CFrame = CFrame.new(offset) * rot * CFrame.new(0, 0, dist)
+        end
+    elseif rmbFixEnabled and sagTikBasili then
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+    end
+end)
+
+-- Dinamik Auto Clicker Döngüsü
+task.spawn(function()
+    while true do
+        if acEnabled then
+            local pos = UserInputService:GetMouseLocation()
+            VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 1)
+            task.wait(0.01)
+            VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
+            
+            -- Doğal rastgele sapma ekle (anti-detect)
+            local jitter = (math.random() * 0.015)
+            task.wait(acDelay + jitter)
+        else
+            task.wait(0.05)
+        end
+    end
+end)
