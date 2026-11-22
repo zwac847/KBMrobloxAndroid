@@ -1,14 +1,28 @@
--- Android KBM Suite V4 (Hareket Dostu Auto Clicker + Teleport Fix + Custom Shift Lock + Görüş Desteği)
+-- Android KBM Suite V5 (Akıllı Auto Clicker + Teleport Fix + Custom Shift Lock + Tribe Renkli Görüş Desteği)
 -- Menü Aç/Kapa: F6 veya Sol Üstteki "KBM" Butonu
+
+-- Önceki çalışan sürümü tamamen temizle (Çizgi ve döngü çakışmasını önler)
+if getgenv and getgenv().KBM_Suite_Cleanup then
+    pcall(getgenv().KBM_Suite_Cleanup)
+end
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local GuiService = game:GetService("GuiService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local VirtualUser = game:GetService("VirtualUser")
 
 local player = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local playerGui = player:WaitForChild("PlayerGui")
+local connections = {}
+local running = true
+
+local function track(conn)
+    table.insert(connections, conn)
+    return conn
+end
 
 -- ==========================================
 -- AYARLAR & DURUMLAR
@@ -27,9 +41,8 @@ local sagTikBasili = false
 local baslangicPos = Vector2.new(0, 0)
 local yaw, pitch = 0, 0
 
--- Önceki sürümleri temizle
-local playerGui = player:WaitForChild("PlayerGui")
-for _, name in ipairs({"AndroidKBM_Suite", "AndroidKBM_Suite_V2", "AndroidKBM_Suite_V3", "AndroidKBM_Suite_V4"}) do
+-- Eski GUI kalıntılarını temizle
+for _, name in ipairs({"AndroidKBM_Suite", "AndroidKBM_Suite_V2", "AndroidKBM_Suite_V3", "AndroidKBM_Suite_V4", "AndroidKBM_Suite_V5"}) do
     if playerGui:FindFirstChild(name) then
         playerGui[name]:Destroy()
     end
@@ -39,7 +52,7 @@ end
 -- MODERN GUI OLUŞTURMA
 -- ==========================================
 local gui = Instance.new("ScreenGui")
-gui.Name = "AndroidKBM_Suite_V4"
+gui.Name = "AndroidKBM_Suite_V5"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.Parent = playerGui
@@ -80,7 +93,7 @@ local title = Instance.new("TextLabel", topBar)
 title.Size = UDim2.new(1, -24, 1, 0)
 title.Position = UDim2.new(0, 14, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "KBM Suite V4  •  [F6]"
+title.Text = "KBM Suite V5  •  [F6]"
 title.TextColor3 = Color3.fromRGB(240, 240, 250)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
@@ -88,7 +101,7 @@ title.TextXAlignment = Enum.TextXAlignment.Left
 
 -- Özel Sürükleme
 local dragging, dragInput, dragStart, startPos
-topBar.InputBegan:Connect(function(input)
+track(topBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
@@ -97,18 +110,18 @@ topBar.InputBegan:Connect(function(input)
             if input.UserInputState == Enum.UserInputState.End then dragging = false end
         end)
     end
-end)
-topBar.InputChanged:Connect(function(input)
+end))
+track(topBar.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
         dragInput = input
     end
-end)
-UserInputService.InputChanged:Connect(function(input)
+end))
+track(UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
         local delta = input.Position - dragStart
         mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
-end)
+end))
 
 local container = Instance.new("Frame", mainFrame)
 container.Size = UDim2.new(1, -20, 1, -50)
@@ -136,7 +149,7 @@ local function toggleMenu()
         end)
     end
 end
-floatBtn.MouseButton1Click:Connect(toggleMenu)
+track(floatBtn.MouseButton1Click:Connect(toggleMenu))
 
 local function createToggle(text, defaultState, callback)
     local row = Instance.new("Frame", container)
@@ -175,11 +188,11 @@ local function createToggle(text, defaultState, callback)
     end
 
     updateVisual(defaultState)
-    btn.MouseButton1Click:Connect(function()
+    track(btn.MouseButton1Click:Connect(function()
         defaultState = not defaultState
         updateVisual(defaultState)
         callback(defaultState)
-    end)
+    end))
     return updateVisual
 end
 
@@ -220,8 +233,8 @@ local function createStepper(text, initialDisplay, onMinus, onPlus)
     plus.TextSize = 14
     Instance.new("UICorner", plus).CornerRadius = UDim.new(0, 5)
 
-    minus.MouseButton1Click:Connect(function() lbl.Text = text .. ": " .. onMinus() end)
-    plus.MouseButton1Click:Connect(function() lbl.Text = text .. ": " .. onPlus() end)
+    track(minus.MouseButton1Click:Connect(function() lbl.Text = text .. ": " .. onMinus() end))
+    track(plus.MouseButton1Click:Connect(function() lbl.Text = text .. ": " .. onPlus() end))
 end
 
 local miniHud = Instance.new("TextLabel", gui)
@@ -248,10 +261,11 @@ chStroke.Color = Color3.fromRGB(0, 0, 0)
 chStroke.Thickness = 1.5
 
 -- ==========================================
--- AKILLI GÖRÜŞ DESTEĞİ (İSKELET + İSİM/MESAFE)
+-- AKILLI GÖRÜŞ DESTEĞİ (TRIBE RENKLİ İSKELET)
 -- ==========================================
 local hasDrawing = pcall(function() return Drawing.new end)
 local visualsCache = {}
+local defaultColor = Color3.fromRGB(165, 225, 255) -- Kabilesizler için soft buz mavisi
 
 local bonesR15 = {
     {"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"},
@@ -267,11 +281,23 @@ local bonesR6 = {
     {"Torso", "Left Leg"}, {"Torso", "Right Leg"}
 }
 
+-- Sıralamadaki Tribe (Team) rengini al
+local function getTribeColor(plr)
+    if plr.Team and plr.TeamColor then
+        local c = plr.TeamColor.Color
+        -- Çok koyu veya tamamen beyaz/nötr değilse kabile rengini kullan
+        if plr.Team.Name ~= "Neutral" and plr.Team.Name ~= "No Tribe" then
+            return c
+        end
+    end
+    return defaultColor
+end
+
 local function clearVisualFor(plr)
     local data = visualsCache[plr]
     if data then
-        for _, line in ipairs(data.lines) do line:Remove() end
-        data.label:Remove()
+        for _, line in ipairs(data.lines) do pcall(function() line:Remove() end) end
+        pcall(function() data.label:Remove() end)
         visualsCache[plr] = nil
     end
 end
@@ -284,7 +310,7 @@ local function createVisualFor(plr)
     for i = 1, 14 do
         local l = Drawing.new("Line")
         l.Thickness = 1.25
-        l.Color = Color3.fromRGB(165, 225, 255)
+        l.Color = defaultColor
         l.Transparency = 0.75
         l.Visible = false
         lines[i] = l
@@ -309,8 +335,8 @@ local function hideAllVisuals()
 end
 
 for _, plr in ipairs(Players:GetPlayers()) do createVisualFor(plr) end
-Players.PlayerAdded:Connect(createVisualFor)
-Players.PlayerRemoving:Connect(clearVisualFor)
+track(Players.PlayerAdded:Connect(createVisualFor))
+track(Players.PlayerRemoving:Connect(clearVisualFor))
 
 -- ==========================================
 -- SHIFT LOCK SIFIRLAMA & RESPAWN KORUMASI
@@ -320,14 +346,15 @@ local function disableShiftLock()
     crosshair.Visible = false
     UserInputService.MouseBehavior = Enum.MouseBehavior.Default
     UserInputService.MouseIconEnabled = true
-    camera.CameraType = Enum.CameraType.Custom
+    local cam = workspace.CurrentCamera
+    if cam then cam.CameraType = Enum.CameraType.Custom end
     local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if hum then hum.AutoRotate = true end
 end
 
-player.CharacterAdded:Connect(function()
+track(player.CharacterAdded:Connect(function()
     if shiftLockActive then disableShiftLock() end
-end)
+end))
 
 -- ==========================================
 -- GUI BUTONLARINI BAĞLA
@@ -368,16 +395,14 @@ createToggle("Görüş Desteği (İskelet)", visualAssist, function(state)
 end)
 
 -- ==========================================
--- TUŞ VE FARE DİNLEYİCİLERİ (gameProcessed Düzeltildi)
+-- TUŞ VE FARE DİNLEYİCİLERİ
 -- ==========================================
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    -- F6 her zaman çalışır
+track(UserInputService.InputBegan:Connect(function(input)
     if input.KeyCode == Enum.KeyCode.F6 then
         toggleMenu()
         return
     end
 
-    -- Sadece sohbet/yazı kutusu açıkken kısayolları durdur (oyun tuşları artık engellemez)
     if UserInputService:GetFocusedTextBox() then return end
 
     -- Auto Clicker (R veya Farenin Yan Tuşu)
@@ -392,12 +417,15 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     -- Özel Shift Lock (LeftShift)
     if shiftLockSystem and input.KeyCode == Enum.KeyCode.LeftShift then
         if not shiftLockActive then
-            shiftLockActive = true
-            crosshair.Visible = true
-            local _, y, _ = camera.CFrame:ToEulerAnglesYXZ()
-            yaw, pitch = y, 0
-            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-            UserInputService.MouseIconEnabled = false
+            local cam = workspace.CurrentCamera
+            if cam then
+                shiftLockActive = true
+                crosshair.Visible = true
+                local _, y, _ = cam.CFrame:ToEulerAnglesYXZ()
+                yaw, pitch = y, 0
+                UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+                UserInputService.MouseIconEnabled = false
+            end
         else
             disableShiftLock()
         end
@@ -409,9 +437,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         baslangicPos = UserInputService:GetMouseLocation()
         UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
     end
-end)
+end))
 
-UserInputService.InputEnded:Connect(function(input)
+track(UserInputService.InputEnded:Connect(function(input)
     if rmbFixEnabled and sagTikBasili and input.UserInputType == Enum.UserInputType.MouseButton2 then
         sagTikBasili = false
         if not shiftLockActive then
@@ -419,9 +447,9 @@ UserInputService.InputEnded:Connect(function(input)
             VirtualInputManager:SendMouseMoveEvent(baslangicPos.X, baslangicPos.Y, game)
         end
     end
-end)
+end))
 
-UserInputService.InputChanged:Connect(function(input, gameProcessed)
+track(UserInputService.InputChanged:Connect(function(input, gameProcessed)
     if not shiftLockActive then return end
     if input.UserInputType == Enum.UserInputType.MouseMovement then
         yaw = yaw - (input.Delta.X * sens)
@@ -429,15 +457,19 @@ UserInputService.InputChanged:Connect(function(input, gameProcessed)
     elseif input.UserInputType == Enum.UserInputType.MouseWheel and not gameProcessed then
         camDist = math.clamp(camDist - (input.Position.Z * 1.5), 4, 20)
     end
-end)
+end))
 
 -- ==========================================
--- ANA DÖNGÜLER (Kamera + Görüş Desteği + Temiz Auto Clicker)
+-- ANA DÖNGÜ (Kamera + Tribe Renkli Görüş Desteği)
 -- ==========================================
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
-RunService.RenderStepped:Connect(function()
+track(RunService.RenderStepped:Connect(function()
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+
+    -- 1. Özel Shift Lock & Sağ Tık Koruması
     if shiftLockActive then
         local char = player.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -447,7 +479,7 @@ RunService.RenderStepped:Connect(function()
             hum.AutoRotate = false
             root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, yaw, 0)
 
-            camera.CameraType = Enum.CameraType.Scriptable
+            cam.CameraType = Enum.CameraType.Scriptable
             local rot = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
             local origin = root.Position + Vector3.new(0, 1.5, 0) + (rot * Vector3.new(1.75, 0.5, 0))
             local desiredCFrame = CFrame.new(origin) * rot * CFrame.new(0, 0, camDist)
@@ -456,16 +488,16 @@ RunService.RenderStepped:Connect(function()
             local direction = desiredCFrame.Position - origin
             local result = workspace:Raycast(origin, direction, rayParams)
             if result then
-                camera.CFrame = CFrame.new(result.Position - (direction.Unit * 0.5)) * rot
+                cam.CFrame = CFrame.new(result.Position - (direction.Unit * 0.5)) * rot
             else
-                camera.CFrame = desiredCFrame
+                cam.CFrame = desiredCFrame
             end
         end
     elseif rmbFixEnabled and sagTikBasili then
         UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
     end
 
-    -- Akıllı Görüş Desteği
+    -- 2. Tribe Renkli Akıllı Görüş Desteği
     if visualAssist and hasDrawing then
         local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
         for plr, data in pairs(visualsCache) do
@@ -475,22 +507,26 @@ RunService.RenderStepped:Connect(function()
             local root = char and char:FindFirstChild("HumanoidRootPart")
 
             if char and hum and hum.Health > 0 and head and root then
-                local distStuds = myRoot and (myRoot.Position - root.Position).Magnitude or (camera.CFrame.Position - root.Position).Magnitude
+                local distStuds = myRoot and (myRoot.Position - root.Position).Magnitude or (cam.CFrame.Position - root.Position).Magnitude
                 local distMeters = math.floor(distStuds * 0.28)
+                local tribeCol = getTribeColor(plr)
 
                 local skelAlpha = math.clamp((distMeters - 6) / 22, 0.12, 0.72)
                 local textAlpha = math.clamp((distMeters - 3) / 15, 0.35, 0.90)
 
-                local headPos, onScreen = camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1.8, 0))
+                -- İsim ve Mesafe Etiketi
+                local headPos, onScreen = cam:WorldToViewportPoint(head.Position + Vector3.new(0, 1.8, 0))
                 if onScreen then
                     data.label.Position = Vector2.new(headPos.X, headPos.Y)
                     data.label.Text = string.format("%s [%dm]", plr.DisplayName, distMeters)
+                    data.label.Color = tribeCol
                     data.label.Transparency = textAlpha
                     data.label.Visible = true
                 else
                     data.label.Visible = false
                 end
 
+                -- İskelet Çizgileri
                 local boneList = char:FindFirstChild("UpperTorso") and bonesR15 or bonesR6
                 for i, line in ipairs(data.lines) do
                     local pair = boneList[i]
@@ -498,11 +534,12 @@ RunService.RenderStepped:Connect(function()
                         local p1 = char:FindFirstChild(pair[1])
                         local p2 = char:FindFirstChild(pair[2])
                         if p1 and p2 then
-                            local v1, vis1 = camera:WorldToViewportPoint(p1.Position)
-                            local v2, vis2 = camera:WorldToViewportPoint(p2.Position)
+                            local v1, vis1 = cam:WorldToViewportPoint(p1.Position)
+                            local v2, vis2 = cam:WorldToViewportPoint(p2.Position)
                             if vis1 and vis2 then
                                 line.From = Vector2.new(v1.X, v1.Y)
                                 line.To = Vector2.new(v2.X, v2.Y)
+                                line.Color = tribeCol
                                 line.Transparency = skelAlpha
                                 line.Visible = true
                             else
@@ -521,26 +558,67 @@ RunService.RenderStepped:Connect(function()
             end
         end
     end
-end)
+end))
 
--- Hareket Dostu Temiz Auto Clicker (Delta mouse1click öncelikli)
-local hasNativeClick = (type(mouse1click) == "function")
+-- ==========================================
+-- ADAM AKILLI AUTO CLICKER (Sıfır Kamera Kayması)
+-- ==========================================
+local hasFireSignal = (type(firesignal) == "function")
+
+local function akilliTikla()
+    local cam = workspace.CurrentCamera
+    local pos = UserInputService:GetMouseLocation()
+    local inset = GuiService:GetGuiInset()
+    local guiX, guiY = pos.X - inset.X, pos.Y - inset.Y
+
+    -- 1. İmleç altında oyun içi buton (Blood Fruit vb.) varsa doğrudan tetikle
+    local objs = playerGui:GetGuiObjectsAtPosition(guiX, guiY)
+    for _, obj in ipairs(objs) do
+        if obj:IsA("GuiButton") and obj.Visible and not obj:IsDescendantOf(gui) then
+            if hasFireSignal then
+                pcall(firesignal, obj.MouseButton1Down)
+                pcall(firesignal, obj.MouseButton1Click)
+                pcall(firesignal, obj.Activated)
+                pcall(firesignal, obj.MouseButton1Up)
+                return
+            end
+        end
+    end
+
+    -- 2. Elde eşya/silah varsa doğrudan kullan
+    local char = player.Character
+    local tool = char and char:FindFirstChildOfClass("Tool")
+    if tool then
+        pcall(function() tool:Activate() end)
+    end
+
+    -- 3. Yedek: Kamerayı bozmayan VirtualUser tıklaması
+    if cam then
+        pcall(function()
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton1(Vector2.new(pos.X, pos.Y), cam.CFrame)
+        end)
+    end
+end
 
 task.spawn(function()
-    while true do
+    while running do
         if acEnabled then
-            if hasNativeClick then
-                -- Kamerayı ve hareketi bozmadan saf sol tık gönderir
-                pcall(mouse1click)
-            else
-                -- Yedek yöntem: anlık bas-bırak (sürükleme oluşturmadan)
-                local pos = UserInputService:GetMouseLocation()
-                VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
-                VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
-            end
-            task.wait(acDelay + (math.random() * 0.012))
+            akilliTikla()
+            task.wait(acDelay + (math.random() * 0.01))
         else
             task.wait(0.05)
         end
     end
 end)
+
+-- Temizleme fonksiyonunu kaydet
+if getgenv then
+    getgenv().KBM_Suite_Cleanup = function()
+        running = false
+        if shiftLockActive then disableShiftLock() end
+        for _, conn in ipairs(connections) do pcall(function() conn:Disconnect() end) end
+        for plr in pairs(visualsCache) do clearVisualFor(plr) end
+        if gui then pcall(function() gui:Destroy() end) end
+    end
+end
