@@ -1,4 +1,4 @@
--- Android KBM Suite V3 (Auto Clicker + Teleport Fix + Custom Shift Lock + Görüş Desteği)
+-- Android KBM Suite V4 (Hareket Dostu Auto Clicker + Teleport Fix + Custom Shift Lock + Görüş Desteği)
 -- Menü Aç/Kapa: F6 veya Sol Üstteki "KBM" Butonu
 
 local Players = game:GetService("Players")
@@ -21,15 +21,15 @@ local shiftLockSystem = true
 local shiftLockActive = false
 local sens = 0.004
 local camDist = 10
-local visualAssist = false -- Akıllı Görüş Desteği (İskelet + İsim/Mesafe)
+local visualAssist = false
 
 local sagTikBasili = false
 local baslangicPos = Vector2.new(0, 0)
 local yaw, pitch = 0, 0
 
--- Önceki sürüm açıksa temizle
+-- Önceki sürümleri temizle
 local playerGui = player:WaitForChild("PlayerGui")
-for _, name in ipairs({"AndroidKBM_Suite", "AndroidKBM_Suite_V2", "AndroidKBM_Suite_V3"}) do
+for _, name in ipairs({"AndroidKBM_Suite", "AndroidKBM_Suite_V2", "AndroidKBM_Suite_V3", "AndroidKBM_Suite_V4"}) do
     if playerGui:FindFirstChild(name) then
         playerGui[name]:Destroy()
     end
@@ -39,7 +39,7 @@ end
 -- MODERN GUI OLUŞTURMA
 -- ==========================================
 local gui = Instance.new("ScreenGui")
-gui.Name = "AndroidKBM_Suite_V3"
+gui.Name = "AndroidKBM_Suite_V4"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.Parent = playerGui
@@ -80,7 +80,7 @@ local title = Instance.new("TextLabel", topBar)
 title.Size = UDim2.new(1, -24, 1, 0)
 title.Position = UDim2.new(0, 14, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "KBM Suite V3  •  [F6]"
+title.Text = "KBM Suite V4  •  [F6]"
 title.TextColor3 = Color3.fromRGB(240, 240, 250)
 title.Font = Enum.Font.GothamBold
 title.TextSize = 14
@@ -284,7 +284,7 @@ local function createVisualFor(plr)
     for i = 1, 14 do
         local l = Drawing.new("Line")
         l.Thickness = 1.25
-        l.Color = Color3.fromRGB(165, 225, 255) -- Göz yormayan soft buz mavisi
+        l.Color = Color3.fromRGB(165, 225, 255)
         l.Transparency = 0.75
         l.Visible = false
         lines[i] = l
@@ -368,15 +368,19 @@ createToggle("Görüş Desteği (İskelet)", visualAssist, function(state)
 end)
 
 -- ==========================================
--- TUŞ VE FARE DİNLEYİCİLERİ
+-- TUŞ VE FARE DİNLEYİCİLERİ (gameProcessed Düzeltildi)
 -- ==========================================
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    -- F6 her zaman çalışır
     if input.KeyCode == Enum.KeyCode.F6 then
         toggleMenu()
         return
     end
-    if gameProcessed then return end
 
+    -- Sadece sohbet/yazı kutusu açıkken kısayolları durdur (oyun tuşları artık engellemez)
+    if UserInputService:GetFocusedTextBox() then return end
+
+    -- Auto Clicker (R veya Farenin Yan Tuşu)
     if input.UserInputType == Enum.UserInputType.MouseButton4
     or input.UserInputType == Enum.UserInputType.MouseButton5
     or input.KeyCode == Enum.KeyCode.R then
@@ -385,6 +389,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         miniHud.Visible = acEnabled
     end
 
+    -- Özel Shift Lock (LeftShift)
     if shiftLockSystem and input.KeyCode == Enum.KeyCode.LeftShift then
         if not shiftLockActive then
             shiftLockActive = true
@@ -398,6 +403,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         end
     end
 
+    -- Sağ Tık Işınlanma Önleyici
     if rmbFixEnabled and not shiftLockActive and input.UserInputType == Enum.UserInputType.MouseButton2 then
         sagTikBasili = true
         baslangicPos = UserInputService:GetMouseLocation()
@@ -426,13 +432,12 @@ UserInputService.InputChanged:Connect(function(input, gameProcessed)
 end)
 
 -- ==========================================
--- ANA DÖNGÜLER (Kamera + Görüş Desteği + Auto Clicker)
+-- ANA DÖNGÜLER (Kamera + Görüş Desteği + Temiz Auto Clicker)
 -- ==========================================
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
 RunService.RenderStepped:Connect(function()
-    -- 1. Özel Shift Lock & Sağ Tık Koruması
     if shiftLockActive then
         local char = player.Character
         local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -460,7 +465,7 @@ RunService.RenderStepped:Connect(function()
         UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
     end
 
-    -- 2. Akıllı Görüş Desteği (İskelet + İsim/Mesafe)
+    -- Akıllı Görüş Desteği
     if visualAssist and hasDrawing then
         local myRoot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
         for plr, data in pairs(visualsCache) do
@@ -471,13 +476,11 @@ RunService.RenderStepped:Connect(function()
 
             if char and hum and hum.Health > 0 and head and root then
                 local distStuds = myRoot and (myRoot.Position - root.Position).Magnitude or (camera.CFrame.Position - root.Position).Magnitude
-                local distMeters = math.floor(distStuds * 0.28) -- Stud -> Metre dönüşümü
+                local distMeters = math.floor(distStuds * 0.28)
 
-                -- Yakınlık akıllı solma: 25m altında iskelet yumuşakça şeffaflaşır (görünümü bozmaz)
                 local skelAlpha = math.clamp((distMeters - 6) / 22, 0.12, 0.72)
                 local textAlpha = math.clamp((distMeters - 3) / 15, 0.35, 0.90)
 
-                -- İsim ve Mesafe Etiketi
                 local headPos, onScreen = camera:WorldToViewportPoint(head.Position + Vector3.new(0, 1.8, 0))
                 if onScreen then
                     data.label.Position = Vector2.new(headPos.X, headPos.Y)
@@ -488,7 +491,6 @@ RunService.RenderStepped:Connect(function()
                     data.label.Visible = false
                 end
 
-                -- İskelet Çizgileri (R15 / R6 Otomatik)
                 local boneList = char:FindFirstChild("UpperTorso") and bonesR15 or bonesR6
                 for i, line in ipairs(data.lines) do
                     local pair = boneList[i]
@@ -521,15 +523,22 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Dinamik Auto Clicker Döngüsü
+-- Hareket Dostu Temiz Auto Clicker (Delta mouse1click öncelikli)
+local hasNativeClick = (type(mouse1click) == "function")
+
 task.spawn(function()
     while true do
         if acEnabled then
-            local pos = UserInputService:GetMouseLocation()
-            VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 1)
-            task.wait(0.01)
-            VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
-            task.wait(acDelay + (math.random() * 0.015))
+            if hasNativeClick then
+                -- Kamerayı ve hareketi bozmadan saf sol tık gönderir
+                pcall(mouse1click)
+            else
+                -- Yedek yöntem: anlık bas-bırak (sürükleme oluşturmadan)
+                local pos = UserInputService:GetMouseLocation()
+                VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
+                VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
+            end
+            task.wait(acDelay + (math.random() * 0.012))
         else
             task.wait(0.05)
         end
